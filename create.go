@@ -10,6 +10,15 @@ import (
 
 func (handler *DbHandler) Insert(request models.IRequest) (result interface{}, err error) {
 	req := request.GetBaseRequest()
+	nodeName := handler.DB.Config.NodeNamer.GetName(req.Body)
+	bodyMap, params := structToMapParam(req.Body)
+	marshalledBody, err := json.Marshal(bodyMap)
+	if err != nil {
+		return
+	}
+	body := string(marshalledBody)
+	body = strings.Replace(body, "\"", "", -1)
+	query := fmt.Sprintf("CREATE (n:%s %s) RETURN n", nodeName, body)
 	session, err := handler.DB.Driver.Session(neo4j.AccessModeWrite)
 	if err != nil {
 		return
@@ -21,18 +30,6 @@ func (handler *DbHandler) Insert(request models.IRequest) (result interface{}, e
 			return
 		}
 	}()
-	nodeName := handler.DB.Config.NodeNamer.GetName(req.Body)
-	bodyMap, params := structToMapParam(req.Body)
-	if err != nil {
-		return
-	}
-	marshalledBody, err := json.Marshal(bodyMap)
-	if err != nil {
-		return
-	}
-	body := string(marshalledBody)
-	body = strings.Replace(body, "\"", "", -1)
-	query := fmt.Sprintf("CREATE (n:%s %s) RETURN n", nodeName, body)
 	queryResult, err := session.Run(query, params)
 	if err != nil {
 		return

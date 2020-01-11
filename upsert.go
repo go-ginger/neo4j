@@ -46,22 +46,8 @@ func (handler *DbHandler) getInsertOnlyFields(model interface{}) []string {
 
 func (handler *DbHandler) Upsert(request models.IRequest) (err error) {
 	req := request.GetBaseRequest()
-	session, err := handler.DB.Driver.Session(neo4j.AccessModeWrite)
-	if err != nil {
-		return
-	}
-	defer func() {
-		e := session.Close()
-		if e != nil && err == nil {
-			err = e
-			return
-		}
-	}()
 	nodeName := handler.DB.Config.NodeNamer.GetName(req.Body)
 	bodyMap, params := structToMapParam(req.Body)
-	if err != nil {
-		return
-	}
 	// filter
 	err = handler.NormalizeFilter(req.Filters)
 	if err != nil {
@@ -102,6 +88,17 @@ func (handler *DbHandler) Upsert(request models.IRequest) (err error) {
 		query += fmt.Sprintf("ON MATCH SET %s ", sets[1:])
 	}
 	//query += "return n"
+	session, err := handler.DB.Driver.Session(neo4j.AccessModeWrite)
+	if err != nil {
+		return
+	}
+	defer func() {
+		e := session.Close()
+		if e != nil && err == nil {
+			err = e
+			return
+		}
+	}()
 	queryResult, err := session.Run(query, params)
 	if err != nil {
 		return

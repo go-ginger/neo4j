@@ -9,17 +9,6 @@ import (
 
 func (handler *DbHandler) Delete(request models.IRequest) (err error) {
 	req := request.GetBaseRequest()
-	session, err := handler.DB.Driver.Session(neo4j.AccessModeWrite)
-	if err != nil {
-		return
-	}
-	defer func() {
-		e := session.Close()
-		if e != nil && err == nil {
-			err = e
-			return
-		}
-	}()
 	model := handler.GetModelInstance()
 	nodeName := handler.DB.Config.NodeNamer.GetName(model)
 	// filter
@@ -34,6 +23,17 @@ func (handler *DbHandler) Delete(request models.IRequest) (err error) {
 	//
 	query := fmt.Sprintf("MATCH (n:%s %s) "+
 		"DELETE n", nodeName, filterStr)
+	session, err := handler.DB.Driver.Session(neo4j.AccessModeWrite)
+	if err != nil {
+		return
+	}
+	defer func() {
+		e := session.Close()
+		if e != nil && err == nil {
+			err = e
+			return
+		}
+	}()
 	queryResult, err := session.Run(query, params)
 	if err != nil {
 		return
