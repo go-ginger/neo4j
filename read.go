@@ -16,7 +16,10 @@ func (handler *DbHandler) Paginate(request models.IRequest) (result *models.Pagi
 	query := fmt.Sprintf("MATCH (n:%s)	"+
 		"RETURN %s", nodeName, strings.Join(keys, ","))
 	params := map[string]interface{}{}
-
+	err = handler.NormalizeFilter(req.Filters)
+	if err != nil {
+		return
+	}
 	var totalCount uint64
 	//done := make(chan bool, 1)
 	//go handler.countDocuments(db, collection, filter, done, &totalCount)

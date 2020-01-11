@@ -23,6 +23,9 @@ func (handler *DbHandler) Insert(request models.IRequest) (result interface{}, e
 	}()
 	nodeName := handler.DB.Config.NodeNamer.GetName(req.Body)
 	bodyMap, params := structToMapParam(req.Body)
+	if err != nil {
+		return
+	}
 	marshalledBody, err := json.Marshal(bodyMap)
 	if err != nil {
 		return
