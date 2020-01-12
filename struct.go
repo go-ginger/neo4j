@@ -80,26 +80,118 @@ func structToMapParam(item interface{}, prefix ...string) (result, params map[st
 	return
 }
 
-func getKeys(nodeName string, model interface{}) (keys []string) {
-	if keys, ok := cachedKeys[nodeName]; ok {
-		return keys
+type keysOptions struct {
+	isType        bool
+	keyPrefix     string
+	isAnonymous   bool
+	processedKeys map[string]bool
+}
+
+func getKeys(nodeName string, model interface{}, separator string, options ...keysOptions) (keys []string) {
+	var option *keysOptions
+	if options != nil && len(options) > 0 {
+		option = &options[0]
+	}
+	if option != nil && option.processedKeys == nil {
+		option.processedKeys = make(map[string]bool, 0)
 	}
 	keys = make([]string, 0)
-	s := reflect.ValueOf(model).Elem()
-	sType := s.Type()
-	for i := 0; i < s.NumField(); i++ {
-		ff := sType.Field(i)
-		tag, ok := ff.Tag.Lookup("json")
-		if ok && tag != "-" {
-			tp := strings.Split(tag, ",")
-			for _, part := range tp {
-				if part != "-" && part != "" {
-					keys = append(keys, nodeName+"."+part)
+	var sType reflect.Type
+	if option != nil && option.isType {
+		sType = model.(reflect.Type)
+	} else {
+		sType = reflect.TypeOf(model)
+	}
+	if sType.Kind() == reflect.Ptr {
+		sType = sType.Elem()
+	}
+	sTypeName := sType.Name()
+	if keys, ok := cachedKeys[sTypeName]; ok {
+		return keys
+	}
+	for i := 0; i < sType.NumField(); i++ {
+		tf := sType.Field(i)
+		dlTag, ok := tf.Tag.Lookup("dl")
+		if ok {
+			parts := strings.Split(dlTag, ",")
+			skip := false
+			for _, part := range parts {
+				if part == "read_only" {
+					skip = true
 					break
 				}
 			}
+			if skip {
+				continue
+			}
+		}
+		tag, ok := tf.Tag.Lookup("json")
+		if ok && tag == "-" {
+			continue
+		}
+		if (ok && tag != "-") || (option != nil && option.isAnonymous) || tf.Anonymous {
+			var name string
+			if !tf.Anonymous {
+				if ok {
+					tp := strings.Split(tag, ",")
+					name = tp[0]
+					if name == "-" {
+						continue
+					}
+				}
+				if name == "" {
+					name = tf.Name
+				}
+			}
+
+			ft := sType.Field(i).Type
+			kind := ft.Kind()
+			if kind == reflect.Ptr {
+				ft = ft.Elem()
+				kind = ft.Kind()
+			}
+			if kind == reflect.Struct {
+				prefix := ""
+				if option != nil && option.keyPrefix != "" {
+					prefix += option.keyPrefix
+				}
+				prefix += name
+				var processedKeys map[string]bool
+				if option != nil {
+					processedKeys = option.processedKeys
+				}
+				nestedKeys := getKeys(nodeName, ft, separator, keysOptions{
+					isType:      true,
+					keyPrefix:   prefix,
+					isAnonymous: tf.Anonymous,
+				})
+				if processedKeys != nil {
+					for _, k := range nestedKeys {
+						if _, processed := processedKeys[k]; !processed {
+							keys = append(keys, k)
+							processedKeys[k] = true
+						}
+					}
+				} else {
+					keys = append(keys, nestedKeys...)
+				}
+				continue
+			}
+			if option != nil && option.keyPrefix != "" {
+				name = option.keyPrefix + separator + name
+			}
+			if nodeName != "" {
+				name = nodeName + "." + name
+			}
+			if option != nil {
+				if _, processed := option.processedKeys[name]; processed {
+					continue
+				}
+				option.processedKeys[name] = true
+			}
+			keys = append(keys, name)
 		}
 	}
-	cachedKeys[nodeName] = keys
+	cachedKeys[sTypeName] = keys
 	return
 }
