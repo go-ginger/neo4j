@@ -22,7 +22,7 @@ func (handler *DbHandler) Delete(request models.IRequest) (err error) {
 	}
 	//
 	query := fmt.Sprintf("MATCH (n:%s %s) "+
-		"DELETE n", nodeName, filterStr)
+		"DETACH DELETE n", nodeName, filterStr)
 	session, err := handler.DB.Driver.Session(neo4j.AccessModeWrite)
 	if err != nil {
 		return

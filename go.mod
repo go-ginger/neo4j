@@ -1,0 +1,12 @@
+module github.com/go-ginger/neo4j
+
+go 1.12
+
+require (
+	github.com/go-ginger/dl v0.5.0
+	github.com/go-ginger/helpers v0.1.0
+	github.com/go-ginger/models v0.2.0
+	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/neo4j-drivers/gobolt v1.7.4 // indirect
+	github.com/neo4j/neo4j-go-driver v1.7.4
+)

@@ -85,6 +85,7 @@ func (handler *DbHandler) Upsert(request models.IRequest) (err error) {
 		for k, v := range bodyMap {
 			sets += fmt.Sprintf(",n.%v=%v", k, v)
 		}
+		query += fmt.Sprintf("ON CREATE SET %s ", sets[1:])
 		query += fmt.Sprintf("ON MATCH SET %s ", sets[1:])
 	}
 	//query += "return n"

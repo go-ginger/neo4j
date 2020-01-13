@@ -6,32 +6,49 @@ import (
 	"github.com/go-ginger/helpers"
 	"github.com/go-ginger/models"
 	"github.com/neo4j/neo4j-go-driver/neo4j"
+	"math"
 	"strings"
 )
 
-func (handler *DbHandler) getMapOfRecord(nodeName string, keys []string, values []interface{}) (result map[string]interface{}, err error) {
+func (handler *DbHandler) countDocuments(query string, params map[string]interface{},
+	done chan bool, count *uint64) {
+	session, err := handler.DB.Driver.Session(neo4j.AccessModeRead)
+	if err != nil {
+		return
+	}
+	defer func() {
+		done <- true
+		e := session.Close()
+		if e != nil && err == nil {
+			err = e
+			return
+		}
+	}()
+	queryResult, err := session.Run(query, params)
+	if err != nil {
+		return
+	}
+	for queryResult.Next() {
+		totalCount := uint64(queryResult.Record().Values()[0].(int64))
+		*count += totalCount
+	}
+}
+
+func (handler *DbHandler) populateMap(nodeName string, source map[string]interface{}) (result map[string]interface{}, err error) {
 	result = map[string]interface{}{}
-	keysLen := len(keys)
-	for ind := 0; ind < keysLen; ind++ {
-		key := keys[ind]
+	for key, value := range source {
 		di := strings.Index(key, "$")
 		if di > 0 {
 			actualKey := key[:di]
-			objKeys := make([]string, 0)
-			objValues := make([]interface{}, 0)
+			nestedSource := make(map[string]interface{}, 0)
 			actualKeyLen := len(actualKey)
-			for ki := 0; ki < keysLen; ki++ {
-				k := keys[ki]
+			for k, v := range source {
 				if strings.Index(k, actualKey) == 0 {
-					objKeys = append(objKeys, k[actualKeyLen+1:])
-					objValues = append(objValues, values[ki])
-					keys = helpers.RemoveFromStringSlice(keys, ki)
-					values = helpers.RemoveFromInterfaceSlice(values, ki)
-					keysLen--
-					ki--
+					nestedSource[k[actualKeyLen+1:]] = v
+					delete(source, k)
 				}
 			}
-			nestedObj, e := handler.getMapOfRecord(nodeName, objKeys, objValues)
+			nestedObj, e := handler.populateMap(nodeName, nestedSource)
 			if e != nil {
 				err = e
 				return
@@ -46,7 +63,7 @@ func (handler *DbHandler) getMapOfRecord(nodeName string, keys []string, values 
 			if nodeIndex == 0 {
 				key = key[len(nodeName)+1:]
 			}
-			result[key] = values[ind]
+			result[key] = value
 		}
 	}
 	return
@@ -56,16 +73,56 @@ func (handler *DbHandler) Paginate(request models.IRequest) (result *models.Pagi
 	req := request.GetBaseRequest()
 	model := handler.GetModelInstance()
 	nodeName := handler.DB.Config.NodeNamer.GetName(model)
-	nodeKey := "n"
-	keys := getKeys(nodeKey, model, "$", keysOptions{})
-	keyPrefix := "n."
+	iNodeKey := req.GetTemp("node_key")
+	var nodeKey string
+	if iNodeKey != nil {
+		nodeKey = iNodeKey.(string)
+	} else {
+		nodeKey = "n"
+	}
+	keyPrefix := nodeKey + "."
 	parseResult := handler.QueryParser.Parse(request, keyPrefix)
-	query := fmt.Sprintf("MATCH (n:%s) "+
-		"WHERE %v "+
-		"RETURN %s "+
-	//"ORDER BY n.id "+
-		"SKIP %v LIMIT %v", nodeName, parseResult.GetQuery(), strings.Join(keys, ","),
-		(req.Page-1)*req.PerPage, req.PerPage+1)
+	var query string
+	var countQuery string
+	var params map[string]interface{}
+	var countParams map[string]interface{}
+	if req.ExtraQuery != nil {
+		if iQuery, ok := req.ExtraQuery["query"]; ok {
+			query = iQuery.(string)
+		}
+		if iQuery, ok := req.ExtraQuery["count_query"]; ok {
+			countQuery = iQuery.(string)
+		}
+		if iParams, ok := req.ExtraQuery["params"]; ok {
+			params = iParams.(map[string]interface{})
+		}
+		if iParams, ok := req.ExtraQuery["countParams"]; ok {
+			countParams = iParams.(map[string]interface{})
+		}
+	}
+	if query == "" {
+		query = fmt.Sprintf("MATCH (%s:%s) "+
+			"WHERE %v "+
+			"RETURN %s",
+			nodeKey, nodeName, parseResult.GetQuery(), nodeKey)
+	}
+	if countQuery == "" {
+		countQuery = fmt.Sprintf("MATCH (%s:%s) "+
+			"WHERE %v "+
+			"RETURN COUNT(%s)",
+			nodeKey, nodeName, parseResult.GetQuery(), nodeKey)
+	}
+	if params == nil {
+		params = parseResult.GetParams().(map[string]interface{})
+	}
+	if countParams == nil {
+		countParams = params
+	}
+	var totalCount uint64
+	done := make(chan bool, 1)
+	go handler.countDocuments(countQuery, countParams, done, &totalCount)
+	query += fmt.Sprintf(" SKIP %v LIMIT %v",
+		(req.Page-1)*req.PerPage, req.PerPage)
 	err = handler.NormalizeFilter(req.Filters)
 	if err != nil {
 		return
@@ -81,23 +138,19 @@ func (handler *DbHandler) Paginate(request models.IRequest) (result *models.Pagi
 			return
 		}
 	}()
-	queryResult, err := session.Run(query, parseResult.GetParams().(map[string]interface{}))
+	queryResult, err := session.Run(query, params)
 	if err != nil {
 		return
 	}
 	items := handler.GetModelsInstance()
 	var count uint64 = 0
-	hasNext := false
 	for queryResult.Next() {
 		count++
-		if count > req.PerPage {
-			hasNext = true
-			break
-		}
 		record := queryResult.Record()
-		keys := record.Keys()
-		values := record.Values()
-		obj, e := handler.getMapOfRecord(nodeKey, keys, values)
+		iNode, _ := record.Get(nodeKey)
+		node := iNode.(neo4j.Node)
+		properties := node.Props()
+		obj, e := handler.populateMap(nodeKey, properties)
 		if e != nil {
 			err = e
 			return
@@ -117,14 +170,16 @@ func (handler *DbHandler) Paginate(request models.IRequest) (result *models.Pagi
 	if err = queryResult.Err(); err != nil {
 		return
 	}
+	<-done
+	pageCount := uint64(math.Ceil(float64(totalCount) / float64(req.PerPage)))
 	result = &models.PaginateResult{
 		Items: items,
 		Pagination: models.PaginationInfo{
-			Page:    req.Page,
-			PerPage: req.PerPage,
-			//PageCount:  pageCount,
-			//TotalCount: totalCount,
-			HasNext: hasNext,
+			Page:       req.Page,
+			PerPage:    req.PerPage,
+			PageCount:  pageCount,
+			TotalCount: totalCount,
+			HasNext:    req.Page < pageCount,
 		},
 	}
 	return
