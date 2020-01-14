@@ -121,6 +121,15 @@ func (handler *DbHandler) Paginate(request models.IRequest) (result *models.Pagi
 	var totalCount uint64
 	done := make(chan bool, 1)
 	go handler.countDocuments(countQuery, countParams, done, &totalCount)
+	if req.Sort != nil {
+		for _, s := range *req.Sort {
+			sort := s.Name
+			if !s.Ascending {
+				sort += " DESC"
+			}
+			query += fmt.Sprintf(" ORDER BY %v", sort)
+		}
+	}
 	query += fmt.Sprintf(" SKIP %v LIMIT %v",
 		(req.Page-1)*req.PerPage, req.PerPage)
 	err = handler.NormalizeFilter(req.Filters)
