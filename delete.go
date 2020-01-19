@@ -43,7 +43,7 @@ func (handler *DbHandler) Delete(request models.IRequest) (err error) {
 		return
 	}
 	if summary.Counters().NodesDeleted() == 0 {
-		return errors.GetError(errors.NotFoundError)
+		return errors.GetError(request, errors.NotFoundError)
 	}
 	if err = queryResult.Err(); err != nil {
 		return

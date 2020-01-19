@@ -56,7 +56,7 @@ func (handler *DbHandler) Update(request models.IRequest) (err error) {
 		updated = true
 	}
 	if !updated {
-		err = errors.GetError(errors.NotFoundError)
+		err = errors.GetError(request, errors.NotFoundError)
 		return
 	}
 	_, err = handler.BaseDbHandler.Insert(req)
