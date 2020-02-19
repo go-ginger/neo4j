@@ -88,7 +88,7 @@ func (handler *DbHandler) Upsert(request models.IRequest) (err error) {
 		query += fmt.Sprintf("ON CREATE SET %s ", sets[1:])
 		query += fmt.Sprintf("ON MATCH SET %s ", sets[1:])
 	}
-	//query += "return n"
+	query += "return n"
 	session, err := handler.DB.Driver.Session(neo4j.AccessModeWrite)
 	if err != nil {
 		return

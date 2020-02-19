@@ -43,6 +43,22 @@ func mapToMapParam(item map[string]interface{}, existingParams map[string]interf
 			for pk, pv := range nestedParams {
 				params[pk] = pv
 			}
+		} else if arr, ok := v.([]interface{}); ok {
+			for ind, item := range arr {
+				if mapItem, ok := item.(map[string]interface{}); ok {
+					nestedResult, nestedParams := mapToMapParam(mapItem, params, prefix...)
+					for rk, rv := range nestedResult {
+						result[fmt.Sprintf("%s$%s", k, rk)] = rv
+					}
+					for pk, pv := range nestedParams {
+						params[pk] = pv
+					}
+				} else {
+					k3 := k2 + "$" + fmt.Sprintf("%d", ind)
+					result[k3] = "$" + k3
+					params[k3] = item
+				}
+			}
 		} else {
 			result[k] = "$" + k2
 			params[k2] = v

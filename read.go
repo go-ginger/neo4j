@@ -7,6 +7,7 @@ import (
 	"github.com/go-ginger/models"
 	"github.com/neo4j/neo4j-go-driver/neo4j"
 	"math"
+	"strconv"
 	"strings"
 )
 
@@ -40,24 +41,46 @@ func (handler *DbHandler) populateMap(nodeName string, source map[string]interfa
 		di := strings.Index(key, "$")
 		if di > 0 {
 			actualKey := key[:di]
-			nestedSource := make(map[string]interface{}, 0)
+			var nestedSource map[string]interface{}
+			var nestedSourceArr []interface{}
 			actualKeyLen := len(actualKey)
 			for k, v := range source {
 				if strings.Index(k, actualKey) == 0 {
-					nestedSource[k[actualKeyLen+1:]] = v
-					delete(source, k)
+					if len(k) > actualKeyLen {
+						nestedKey := k[actualKeyLen+1:]
+						if ind, err := strconv.Atoi(nestedKey); err == nil {
+							if nestedSourceArr == nil {
+								nestedSourceArr = make([]interface{}, 0)
+							}
+							for len(nestedSourceArr) < ind+1 {
+								nestedSourceArr = append(nestedSourceArr, nil)
+							}
+							nestedSourceArr[ind] = v
+							delete(source, k)
+						}
+					} else {
+						if nestedSource == nil {
+							nestedSource = make(map[string]interface{}, 0)
+						}
+						nestedSource[k[actualKeyLen+1:]] = v
+						delete(source, k)
+					}
 				}
 			}
-			nestedObj, e := handler.populateMap(nodeName, nestedSource)
-			if e != nil {
-				err = e
-				return
+			if nestedSource != nil {
+				nestedObj, e := handler.populateMap(nodeName, nestedSource)
+				if e != nil {
+					err = e
+					return
+				}
+				nodeIndex := strings.Index(actualKey, nodeName+".")
+				if nodeIndex == 0 {
+					actualKey = actualKey[len(nodeName)+1:]
+				}
+				result[actualKey] = nestedObj
+			} else if nestedSourceArr != nil {
+				result[actualKey] = nestedSourceArr
 			}
-			nodeIndex := strings.Index(actualKey, nodeName+".")
-			if nodeIndex == 0 {
-				actualKey = actualKey[len(nodeName)+1:]
-			}
-			result[actualKey] = nestedObj
 		} else {
 			nodeIndex := strings.Index(key, nodeName+".")
 			if nodeIndex == 0 {
