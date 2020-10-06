@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-func (handler *DbHandler) Insert(request models.IRequest) (result interface{}, err error) {
+func (handler *DbHandler) Insert(request models.IRequest) (result models.IBaseModel, err error) {
 	req := request.GetBaseRequest()
 	nodeName := handler.DB.Config.NodeNamer.GetName(req.Body)
 	bodyMap, params := structToMapParam(req.Body)
