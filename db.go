@@ -20,7 +20,11 @@ func (db *DB) Connect() {
 		noAuth := neo.NoAuth()
 		auth = &noAuth
 	}
-	driver, err := neo.NewDriver(db.Config.Target, *auth)
+	driver, err := neo.NewDriver(db.Config.Target, *auth, func(config *neo.Config) {
+		if db.Config.NeoConfig != nil {
+			*config = *db.Config.NeoConfig
+		}
+	})
 	if err != nil {
 		log.Fatalf("Error creating the client: %s", err)
 	}

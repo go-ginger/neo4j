@@ -9,6 +9,7 @@ import (
 type Config struct {
 	models.IConfig
 
+	NeoConfig     *neo.Config
 	Target        string
 	AuthToken     *neo.AuthToken
 	NodeNamer     namer.INamer
